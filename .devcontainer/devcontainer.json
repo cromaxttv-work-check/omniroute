@@ -1,0 +1,19 @@
+{
+  "name": "OmniRoute Codespaces",
+  "forwardPorts": [20128, 20131, 20132],
+  "portsAttributes": {
+    "20128": {
+      "label": "OmniRoute",
+      "onAutoForward": "notify"
+    },
+    "20131": {
+      "label": "OmniRoute proxy",
+      "onAutoForward": "silent"
+    },
+    "20132": {
+      "label": "OmniRoute dashboard WebSocket",
+      "onAutoForward": "silent"
+    }
+  },
+  "postStartCommand": "bash .devcontainer/start-omniroute.sh"
+}
