@@ -71,7 +71,7 @@ fi
 
 # Keep logs in the workspace (.logs is git-ignored) and pass SWC's cache
 # setting to the server process itself.
-nohup env PORT="$PORT" SWC_NATIVE_BINDING_CACHE="$SWC_CACHE" OMNIROUTE_USE_TURBOPACK=0 \
+nohup env PORT="$PORT" SWC_NATIVE_BINDING_CACHE="$SWC_CACHE" OMNIROUTE_USE_TURBOPACK=0 OMNIROUTE_DISABLE_BACKGROUND_SERVICES=1 \
   node --max-old-space-size=4096 scripts/dev/run-next.mjs dev \
   >> "$LOG_FILE" 2>&1 < /dev/null &
 server_pid="$!"
