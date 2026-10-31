@@ -12,7 +12,13 @@
   in `.logs/omniroute.log`, and preserves logs when startup fails.
 - The development Node.js heap is capped at 4 GiB to leave memory for the
   Codespaces container, editor, and native tooling.
-- SWC uses a private cache in the Codespaces user's home directory.
+- Webpack is selected instead of Turbopack for this Codespaces dev runtime.
+  Next.js owns its normal project-local compiler/build cache; the startup hook
+  does not create or inject an undocumented SWC cache override.
+- All forwarded application, proxy and WebSocket ports are explicitly private.
+- Optional background sync/refresh services are disabled in this constrained
+  dev environment. Core dashboard, database, authentication and API startup
+  remain enabled.
 
 ## Manual diagnostics
 
