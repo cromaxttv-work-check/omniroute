@@ -1,86 +1,114 @@
 #!/usr/bin/env bash
-set -eu
+set -Eeuo pipefail
 
-cd "$(dirname "$0")/.."
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
 
-LOG_DIR="$PWD/.logs"
+LOG_DIR="$ROOT_DIR/.logs"
 LOG_FILE="$LOG_DIR/omniroute.log"
 PID_FILE="$LOG_DIR/omniroute.pid"
-SWC_CACHE="$HOME/.swc-cache"
-PORT=20128
-URL="http://127.0.0.1:$PORT/login"
+LOCK_FILE="$LOG_DIR/omniroute-start.lock"
+
+PORT="${PORT:-20128}"
+HEALTH_URL="http://127.0.0.1:${PORT}/healthz"
+MAX_ATTEMPTS=240
+SLEEP_SECONDS=1
 
 mkdir -p "$LOG_DIR"
-# SWC requires a private, real user-owned cache directory.
-mkdir -p "$SWC_CACHE"
-chmod 700 "$SWC_CACHE"
+
+for required_command in curl flock pgrep ps; do
+  if ! command -v "$required_command" >/dev/null 2>&1; then
+    echo "OmniRoute startup: required command '$required_command' is unavailable." >&2
+    exit 1
+  fi
+done
+
+# Serialize postStartCommand and postAttachCommand. The second hook waits for
+# the first rather than racing it and launching a duplicate Next.js process.
+exec 9>"$LOCK_FILE"
+flock 9
 
 is_ready() {
-  command -v curl >/dev/null 2>&1 &&
-    curl -fsS --max-time 2 "$URL" >/dev/null 2>&1
+  curl -fsS --max-time 2 "$HEALTH_URL" >/dev/null 2>&1
+}
+
+is_server_pid() {
+  local pid="$1"
+  local command_line
+  command_line="$(ps -p "$pid" -o args= 2>/dev/null || true)"
+  [[ "$command_line" == *"scripts/dev/run-next.mjs dev"* ]]
 }
 
 wait_for_ready() {
-  local pid="${1:-}"
+  local pid="$1"
   local attempt
-  for attempt in $(seq 1 30); do
+  for ((attempt=1; attempt<=MAX_ATTEMPTS; attempt++)); do
     if is_ready; then
       return 0
     fi
-    if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then
+    if ! kill -0 "$pid" 2>/dev/null; then
       return 1
     fi
-    sleep 1
+    sleep "$SLEEP_SECONDS"
   done
   return 1
 }
 
-# A responding server is already running; never start a duplicate.
+# A healthy server is the only condition considered a successful start.
 if is_ready; then
   exit 0
 fi
 
-# If a recorded process is alive, wait for it instead of falsely reporting
-# success immediately. If it never becomes ready, preserve logs for diagnosis.
-if [ -f "$PID_FILE" ]; then
+# Reuse a process recorded by an earlier hook only if it is still the OmniRoute
+# dev server. A stale or recycled PID must never suppress a fresh start.
+if [[ -f "$PID_FILE" ]]; then
   old_pid="$(cat "$PID_FILE" 2>/dev/null || true)"
-  if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
-    if wait_for_ready "$old_pid"; then
-      exit 0
+  if [[ "$old_pid" =~ ^[0-9]+$ ]] && kill -0 "$old_pid" 2>/dev/null; then
+    if is_server_pid "$old_pid"; then
+      if wait_for_ready "$old_pid"; then
+        exit 0
+      fi
+      echo "OmniRoute PID $old_pid is alive but /healthz did not become ready." >&2
+      tail -n 100 "$LOG_FILE" 2>/dev/null || true
+      exit 1
     fi
-    printf 'OmniRoute PID %s did not become ready; see %s\n' "$old_pid" "$LOG_FILE" >&2
-    tail -n 80 "$LOG_FILE" 2>/dev/null || true
-    exit 1
   fi
   rm -f "$PID_FILE"
 fi
 
-# Recover an existing server process if the PID file was lost.
-if command -v pgrep >/dev/null 2>&1; then
-  existing_pid="$(pgrep -f '[n]ode .*scripts/dev/run-next.mjs dev' | head -n 1 || true)"
-  if [ -n "$existing_pid" ]; then
-    printf '%s\n' "$existing_pid" > "$PID_FILE"
-    if wait_for_ready "$existing_pid"; then
-      exit 0
-    fi
-    printf 'Existing OmniRoute process %s did not become ready; see %s\n' "$existing_pid" "$LOG_FILE" >&2
-    tail -n 80 "$LOG_FILE" 2>/dev/null || true
-    exit 1
+# Recover an existing process if the PID file was lost.
+existing_pid="$(pgrep -f '[n]ode .*scripts/dev/run-next\.mjs dev' | head -n 1 || true)"
+if [[ -n "$existing_pid" ]]; then
+  printf '%s\n' "$existing_pid" > "$PID_FILE"
+  if wait_for_ready "$existing_pid"; then
+    exit 0
   fi
+  echo "Existing OmniRoute process $existing_pid did not become healthy." >&2
+  tail -n 100 "$LOG_FILE" 2>/dev/null || true
+  exit 1
 fi
 
-# Keep logs in the workspace (.logs is git-ignored) and pass SWC's cache
-# setting to the server process itself.
-nohup env PORT="$PORT" SWC_NATIVE_BINDING_CACHE="$SWC_CACHE" OMNIROUTE_USE_TURBOPACK=0 OMNIROUTE_DISABLE_BACKGROUND_SERVICES=true \
+# Keep the latest log and one bounded-size previous log.
+if [[ -f "$LOG_FILE" ]] && [[ "$(wc -c < "$LOG_FILE")" -gt 10485760 ]]; then
+  mv -f "$LOG_FILE" "$LOG_FILE.1"
+fi
+
+# Webpack is selected deliberately for Codespaces stability. Keep optional
+# background sync/refresh jobs disabled in this constrained dev environment;
+# core API, dashboard, auth, database and routing initialization still run.
+nohup env PORT="$PORT" OMNIROUTE_USE_TURBOPACK=0 OMNIROUTE_DISABLE_BACKGROUND_SERVICES=true \
   node --max-old-space-size=4096 scripts/dev/run-next.mjs dev \
   >> "$LOG_FILE" 2>&1 < /dev/null &
 server_pid="$!"
-printf '%s\n' "$server_pid" > "$PID_FILE"
+printf '%s\n' "$server_pid" > "$PID_FILE.tmp"
+mv -f "$PID_FILE.tmp" "$PID_FILE"
 
 if wait_for_ready "$server_pid"; then
+  echo "OmniRoute is healthy at $HEALTH_URL"
   exit 0
 fi
 
-printf 'OmniRoute failed to become ready within 30 seconds; see %s\n' "$LOG_FILE" >&2
-tail -n 80 "$LOG_FILE" 2>/dev/null || true
+echo "OmniRoute did not become healthy within $((MAX_ATTEMPTS * SLEEP_SECONDS)) seconds." >&2
+echo "The process was left running for diagnosis; log: $LOG_FILE" >&2
+tail -n 100 "$LOG_FILE" 2>/dev/null || true
 exit 1

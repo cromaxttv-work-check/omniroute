@@ -1,19 +1,27 @@
 {
   "name": "OmniRoute Codespaces",
-  "forwardPorts": [20128, 20131, 20132],
+  "forwardPorts": [
+    20128,
+    20131,
+    20132
+  ],
   "portsAttributes": {
     "20128": {
       "label": "OmniRoute",
-      "onAutoForward": "notify"
+      "onAutoForward": "notify",
+      "visibility": "private"
     },
     "20131": {
       "label": "OmniRoute proxy",
-      "onAutoForward": "silent"
+      "onAutoForward": "silent",
+      "visibility": "private"
     },
     "20132": {
       "label": "OmniRoute dashboard WebSocket",
-      "onAutoForward": "silent"
+      "onAutoForward": "silent",
+      "visibility": "private"
     }
   },
-  "postStartCommand": "bash .devcontainer/start-omniroute.sh"
+  "postStartCommand": "bash .devcontainer/start-omniroute.sh",
+  "postAttachCommand": "bash .devcontainer/start-omniroute.sh"
 }
