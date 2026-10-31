@@ -8,15 +8,18 @@
   "portsAttributes": {
     "20128": {
       "label": "OmniRoute",
-      "onAutoForward": "notify"
+      "onAutoForward": "notify",
+      "visibility": "private"
     },
     "20131": {
       "label": "OmniRoute proxy",
-      "onAutoForward": "silent"
+      "onAutoForward": "silent",
+      "visibility": "private"
     },
     "20132": {
       "label": "OmniRoute dashboard WebSocket",
-      "onAutoForward": "silent"
+      "onAutoForward": "silent",
+      "visibility": "private"
     }
   },
   "postStartCommand": "bash .devcontainer/start-omniroute.sh",
