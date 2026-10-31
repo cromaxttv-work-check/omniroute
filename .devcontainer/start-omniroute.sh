@@ -11,27 +11,17 @@ LOCK_FILE="$LOG_DIR/omniroute-start.lock"
 
 PORT="${PORT:-20128}"
 HEALTH_URL="http://127.0.0.1:${PORT}/healthz"
-SWC_CACHE="$HOME/.swc-cache"
-MAX_ATTEMPTS=120
+MAX_ATTEMPTS=240
 SLEEP_SECONDS=1
 
 mkdir -p "$LOG_DIR"
 
-if ! command -v curl >/dev/null 2>&1; then
-  echo "OmniRoute startup: curl is required for the /healthz readiness check." >&2
-  exit 1
-fi
-if ! command -v flock >/dev/null 2>&1; then
-  echo "OmniRoute startup: flock is required to prevent duplicate server starts." >&2
-  exit 1
-fi
-if [[ "$SWC_CACHE" != /* ]]; then
-  echo "OmniRoute startup: SWC_NATIVE_BINDING_CACHE must be an absolute path." >&2
-  exit 1
-fi
-
-mkdir -p "$SWC_CACHE"
-chmod 700 "$SWC_CACHE"
+for required_command in curl flock pgrep ps; do
+  if ! command -v "$required_command" >/dev/null 2>&1; then
+    echo "OmniRoute startup: required command '$required_command' is unavailable." >&2
+    exit 1
+  fi
+done
 
 # Serialize postStartCommand and postAttachCommand. The second hook waits for
 # the first rather than racing it and launching a duplicate Next.js process.
@@ -39,7 +29,7 @@ exec 9>"$LOCK_FILE"
 flock 9
 
 is_ready() {
-  curl -fsS --max-time 1 "$HEALTH_URL" >/dev/null 2>&1
+  curl -fsS --max-time 2 "$HEALTH_URL" >/dev/null 2>&1
 }
 
 is_server_pid() {
@@ -103,9 +93,10 @@ if [[ -f "$LOG_FILE" ]] && [[ "$(wc -c < "$LOG_FILE")" -gt 10485760 ]]; then
   mv -f "$LOG_FILE" "$LOG_FILE.1"
 fi
 
-# Webpack is selected deliberately for Codespaces stability; SWC gets a
-# private, persistent cache under the Codespaces user's home directory.
-nohup env PORT="$PORT" SWC_NATIVE_BINDING_CACHE="$SWC_CACHE" OMNIROUTE_USE_TURBOPACK=0 \
+# Webpack is selected deliberately for Codespaces stability. Keep optional
+# background sync/refresh jobs disabled in this constrained dev environment;
+# core API, dashboard, auth, database and routing initialization still run.
+nohup env PORT="$PORT" OMNIROUTE_USE_TURBOPACK=0 OMNIROUTE_DISABLE_BACKGROUND_SERVICES=true \
   node --max-old-space-size=4096 scripts/dev/run-next.mjs dev \
   >> "$LOG_FILE" 2>&1 < /dev/null &
 server_pid="$!"
