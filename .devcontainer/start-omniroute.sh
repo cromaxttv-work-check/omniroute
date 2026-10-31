@@ -11,9 +11,9 @@ LOCK_FILE="$LOG_DIR/omniroute-start.lock"
 
 PORT="${PORT:-20128}"
 HEALTH_URL="http://127.0.0.1:${PORT}/healthz"
-SWC_CACHE="${SWC_NATIVE_BINDING_CACHE:-$HOME/.swc-cache}"
+SWC_CACHE="$HOME/.swc-cache"
 MAX_ATTEMPTS=120
-SLEEP_SECONDS=2
+SLEEP_SECONDS=1
 
 mkdir -p "$LOG_DIR"
 
@@ -39,7 +39,7 @@ exec 9>"$LOCK_FILE"
 flock 9
 
 is_ready() {
-  curl -fsS --max-time 3 "$HEALTH_URL" >/dev/null 2>&1
+  curl -fsS --max-time 1 "$HEALTH_URL" >/dev/null 2>&1
 }
 
 is_server_pid() {
