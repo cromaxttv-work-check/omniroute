@@ -1,6 +1,10 @@
 {
   "name": "OmniRoute Codespaces",
-  "forwardPorts": [20128, 20131, 20132],
+  "forwardPorts": [
+    20128,
+    20131,
+    20132
+  ],
   "portsAttributes": {
     "20128": {
       "label": "OmniRoute",
@@ -15,5 +19,6 @@
       "onAutoForward": "silent"
     }
   },
-  "postStartCommand": "bash .devcontainer/start-omniroute.sh"
+  "postStartCommand": "bash .devcontainer/start-omniroute.sh",
+  "postAttachCommand": "bash .devcontainer/start-omniroute.sh"
 }
