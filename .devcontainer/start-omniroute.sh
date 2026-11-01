@@ -9,6 +9,13 @@ PID_FILE="$LOG_DIR/omniroute.pid"
 SWC_CACHE="$HOME/.swc-cache"
 PORT=20128
 URL="http://127.0.0.1:$PORT/login"
+STARTUP_TIMEOUT="${OMNIROUTE_STARTUP_TIMEOUT_SECONDS:-180}"
+
+# Next.js may need longer than the old fixed 30 seconds on a cold Codespace.
+# Keep the wait bounded, but allow operators to tune it without editing this file.
+case "$STARTUP_TIMEOUT" in
+  ""|*[!0-9]*|0) STARTUP_TIMEOUT=180 ;;
+esac
 
 mkdir -p "$LOG_DIR"
 # SWC requires a private, real user-owned cache directory.
@@ -22,8 +29,8 @@ is_ready() {
 
 wait_for_ready() {
   local pid="${1:-}"
-  local attempt
-  for attempt in $(seq 1 30); do
+  local attempt=0
+  while [ "$attempt" -lt "$STARTUP_TIMEOUT" ]; do
     if is_ready; then
       return 0
     fi
@@ -31,6 +38,7 @@ wait_for_ready() {
       return 1
     fi
     sleep 1
+    attempt=$((attempt + 1))
   done
   return 1
 }
@@ -81,6 +89,6 @@ if wait_for_ready "$server_pid"; then
   exit 0
 fi
 
-printf 'OmniRoute failed to become ready within 30 seconds; see %s\n' "$LOG_FILE" >&2
+printf 'OmniRoute failed to become ready within ${STARTUP_TIMEOUT} seconds; see %s\n' "$LOG_FILE" >&2
 tail -n 80 "$LOG_FILE" 2>/dev/null || true
 exit 1
