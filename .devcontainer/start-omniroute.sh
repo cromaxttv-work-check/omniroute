@@ -89,6 +89,6 @@ if wait_for_ready "$server_pid"; then
   exit 0
 fi
 
-printf 'OmniRoute failed to become ready within ${STARTUP_TIMEOUT} seconds; see %s\n' "$LOG_FILE" >&2
+printf "OmniRoute failed to become ready within ${STARTUP_TIMEOUT} seconds; see %s\n" "$LOG_FILE" >&2
 tail -n 80 "$LOG_FILE" 2>/dev/null || true
 exit 1
